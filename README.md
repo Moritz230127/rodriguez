@@ -66,6 +66,8 @@ Release 资产是扁平的：`rodriguez.db`、`rodriguez.files`、`*.pkg.tar.zst
 - gtk4-layer-shell：版本更新时改 `pkgs/gtk4-layer-shell/PKGBUILD` 并重建。
 - DSH：上游 CI 继续追 DSH 官方 commit/tag 并打补丁；本仓库只镜像它已发布的包，校验 `SHA256SUMS` 后用本仓库密钥重新签名，不在 VPS 或本仓库重编。
 - 数据库增量更新：workflow 只下载旧 `rodriguez.db`，`repo-add` 新包后上传，不会重新下载全部历史包。
+- 同一 `pkgver-pkgrel` 的资产一旦发布就不再覆盖；需要重建时先 bump `pkgrel`，否则 workflow 会跳过已存在的资产。
+
 - 旧版本目前手动清理；数据库只引用最新版，删除旧资产不影响升级。计划后续在工作流里加入按版本保留 2 个资产的清理步骤。
 
 ## 本地迁移

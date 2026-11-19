@@ -58,14 +58,30 @@ jobs:
           chown -R builder:builder repo incoming
 
       - name: Build gtk4-layer-shell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ( cd pkgs/gtk4-layer-shell && sudo -u builder makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
-          cp pkgs/gtk4-layer-shell/*.pkg.tar.zst pkgs/gtk4-layer-shell/*.pkg.tar.zst.sig repo/
+          set -euo pipefail
+          asset=$(bash -c 'source "$1"; echo "${pkgname}-${pkgver}-${pkgrel}-${arch[0]}.pkg.tar.zst"' _ pkgs/gtk4-layer-shell/PKGBUILD)
+          if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx "$asset"; then
+            echo "already published: $asset"
+          else
+            ( cd pkgs/gtk4-layer-shell && sudo -u builder makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
+            cp pkgs/gtk4-layer-shell/*.pkg.tar.zst pkgs/gtk4-layer-shell/*.pkg.tar.zst.sig repo/
+          fi
 
       - name: Package Niri Side Note
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ( cd pkgs/niri-side-note-bin && sudo -u builder makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
-          cp pkgs/niri-side-note-bin/*.pkg.tar.zst pkgs/niri-side-note-bin/*.pkg.tar.zst.sig repo/
+          set -euo pipefail
+          asset=$(bash -c 'source "$1"; echo "${pkgname}-${pkgver}-${pkgrel}-${arch[0]}.pkg.tar.zst"' _ pkgs/niri-side-note-bin/PKGBUILD)
+          if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx "$asset"; then
+            echo "already published: $asset"
+          else
+            ( cd pkgs/niri-side-note-bin && sudo -u builder makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
+            cp pkgs/niri-side-note-bin/*.pkg.tar.zst pkgs/niri-side-note-bin/*.pkg.tar.zst.sig repo/
+          fi
 
       - name: Mirror DSH release
         env:
