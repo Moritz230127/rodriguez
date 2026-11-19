@@ -11,7 +11,7 @@ license=('MPL-2.0' 'OFL-1.1' 'MIT')
 depends=('cairo' 'dbus' 'fontconfig' 'gdk-pixbuf2' 'glib2' 'glibc' 'graphene'
          'gtk4' 'gtk4-layer-shell' 'libadwaita' 'libgcc' 'pango' 'sqlite' 'librsvg')
 provides=('niri-side-note')
-conflicts=('niri-side-note' 'stickies-cn')
+conflicts=('stickies-cn')
 options=('!strip' '!debug')
 source=("niri-side-note-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver-niri.1/niri-side-note-$pkgver-linux-x86_64.tar.gz")
 sha256sums=('9b7451230afc4543281435f449e1281e81a256dc4fb81cde1d1094eb2defbda8')
