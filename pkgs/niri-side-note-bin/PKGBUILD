@@ -1,9 +1,12 @@
 # Maintainer: Moritz230127 <moritz230127@users.noreply.github.com>
 # 预编译包；源码与对应许可证见 https://github.com/Moritz230127/niri-side-note
+#
+# CI 会解析 niri-side-note 的最新 Release，注入 NIRI_PKGVER / NIRI_PKGREL /
+# NIRI_ASSET / NIRI_URL / NIRI_SHA256；本地也可以显式传这些变量来构建。
 
 pkgname=niri-side-note-bin
-pkgver=0.10.3
-pkgrel=2
+pkgver=${NIRI_PKGVER:-0.10.3}
+pkgrel=${NIRI_PKGREL:-1}
 pkgdesc='Niri 侧笺——贴边便签笔记（预编译二进制）'
 arch=('x86_64')
 url='https://github.com/Moritz230127/niri-side-note'
@@ -13,8 +16,13 @@ depends=('cairo' 'dbus' 'fontconfig' 'gdk-pixbuf2' 'glib2' 'glibc' 'graphene'
 provides=('niri-side-note')
 conflicts=('stickies-cn')
 options=('!strip' '!debug')
-source=("niri-side-note-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver-niri.2/niri-side-note-$pkgver-linux-x86_64.tar.gz")
-sha256sums=('ea457004d465a39643e347acd47304ee2c3d87fa6c0fe306c4062e93652bd03b')
+
+_asset=${NIRI_ASSET:-niri-side-note-0.10.3-linux-x86_64.tar.gz}
+_url=${NIRI_URL:-https://github.com/Moritz230127/niri-side-note/releases/download/v0.10.3-niri.1/$_asset}
+_sha256=${NIRI_SHA256:-9b7451230afc4543281435f449e1281e81a256dc4fb81cde1d1094eb2defbda8}
+
+source=("$_asset::$_url")
+sha256sums=("$_sha256")
 
 package() {
   cd "niri-side-note-$pkgver-linux-x86_64"

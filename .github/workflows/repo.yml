@@ -70,18 +70,51 @@ jobs:
             cp pkgs/gtk4-layer-shell/*.pkg.tar.zst pkgs/gtk4-layer-shell/*.pkg.tar.zst.sig repo/
           fi
 
-      - name: Package Niri Side Note
+      - name: Resolve latest Niri release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          asset=$(bash -c 'source "$1"; echo "${pkgname}-${pkgver}-${pkgrel}-${arch[0]}.pkg.tar.zst"' _ pkgs/niri-side-note-bin/PKGBUILD)
-          if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx "$asset"; then
-            echo "already published: $asset"
-          else
-            ( cd pkgs/niri-side-note-bin && sudo -u builder makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
-            cp pkgs/niri-side-note-bin/*.pkg.tar.zst pkgs/niri-side-note-bin/*.pkg.tar.zst.sig repo/
+          tag=$(gh release view --repo Moritz230127/niri-side-note --json tagName --jq .tagName)
+          base=${tag#v}
+          case "$base" in
+            *-niri.*) ver=${base%-niri.*}; rel=${base##*-niri.} ;;
+            *) ver=$base; rel=1 ;;
+          esac
+          asset=$(gh release view --repo Moritz230127/niri-side-note --json assets \
+            --jq '.assets[] | select(.name|endswith("linux-x86_64.tar.gz")) | .name' | sed -n '1p')
+          test -n "$asset"
+          pkg="niri-side-note-bin-$ver-$rel-x86_64.pkg.tar.zst"
+          assets=$(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          if printf '%s\n' "$assets" | grep -qx "$pkg"; then
+            echo "NIRI_SKIP=1" >> "$GITHUB_ENV"
+            echo "already published: $pkg"
+            exit 0
           fi
+          url="https://github.com/Moritz230127/niri-side-note/releases/download/$tag/$asset"
+          gh release download "$tag" --repo Moritz230127/niri-side-note \
+            --pattern "$asset" --dir incoming --clobber
+          sha=$(sha256sum "incoming/$asset" | awk '{print $1}')
+          {
+            echo "NIRI_PKGVER=$ver"
+            echo "NIRI_PKGREL=$rel"
+            echo "NIRI_ASSET=$asset"
+            echo "NIRI_URL=$url"
+            echo "NIRI_SHA256=$sha"
+          } >> "$GITHUB_ENV"
+
+      - name: Package Niri Side Note
+        run: |
+          if [ "${NIRI_SKIP:-0}" = 1 ]; then
+            echo "already published; skip Niri package"
+            exit 0
+          fi
+          ( cd pkgs/niri-side-note-bin && sudo -u builder env \
+              NIRI_PKGVER="$NIRI_PKGVER" NIRI_PKGREL="$NIRI_PKGREL" \
+              NIRI_ASSET="$NIRI_ASSET" NIRI_URL="$NIRI_URL" NIRI_SHA256="$NIRI_SHA256" \
+              SRCDEST="$GITHUB_WORKSPACE/incoming" \
+              makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
+          cp pkgs/niri-side-note-bin/*.pkg.tar.zst pkgs/niri-side-note-bin/*.pkg.tar.zst.sig repo/
 
       - name: Mirror DSH release
         env:
