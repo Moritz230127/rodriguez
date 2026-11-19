@@ -38,7 +38,7 @@ else:
 open(path, "w", encoding="utf-8").write(text)
 PY
 
-pacman-key --add "$HERE/keys/packages.asc"
+pacman-key --add "$HERE/keys/packages.asc" 2>/dev/null || true
 pacman-key --lsign-key "$KEYID"
 
 echo "== 同步 =="
