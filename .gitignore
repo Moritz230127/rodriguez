@@ -1,0 +1,16 @@
+repo/
+incoming/
+*.pkg.tar.zst
+*.pkg.tar.zst.sig
+*.db
+*.db.sig
+*.db.tar.gz
+*.db.tar.gz.sig
+*.files
+*.files.sig
+*.files.tar.gz
+*.files.tar.gz.sig
+*.old
+pkg/
+src/
+*.tar.gz

@@ -1,0 +1,39 @@
+# Maintainer: Moritz230127 <moritz230127@users.noreply.github.com>
+# 预编译包；源码与对应许可证见 https://github.com/Moritz230127/niri-side-note
+
+pkgname=niri-side-note-bin
+pkgver=0.10.3
+pkgrel=1
+pkgdesc='Niri 侧笺——贴边便签笔记（预编译二进制）'
+arch=('x86_64')
+url='https://github.com/Moritz230127/niri-side-note'
+license=('MPL-2.0' 'OFL-1.1' 'MIT')
+depends=('cairo' 'dbus' 'fontconfig' 'gdk-pixbuf2' 'glib2' 'glibc' 'graphene'
+         'gtk4' 'gtk4-layer-shell' 'libadwaita' 'libgcc' 'pango' 'sqlite' 'librsvg')
+provides=('niri-side-note')
+conflicts=('niri-side-note' 'stickies-cn')
+options=('!strip' '!debug')
+source=("niri-side-note-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver-niri.1/niri-side-note-$pkgver-linux-x86_64.tar.gz")
+sha256sums=('9b7451230afc4543281435f449e1281e81a256dc4fb81cde1d1094eb2defbda8')
+
+package() {
+  cd "niri-side-note-$pkgver-linux-x86_64"
+
+  install -Dm755 bin/niri-side-note "$pkgdir/usr/bin/niri-side-note"
+  install -Dm644 share/applications/niri-side-note.desktop \
+    "$pkgdir/usr/share/applications/niri-side-note.desktop"
+  install -Dm644 share/icons/hicolor/128x128/apps/dev.stickies.Stickies.png \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/dev.stickies.Stickies.png"
+  install -Dm644 share/doc/niri-side-note/README.md \
+    "$pkgdir/usr/share/doc/niri-side-note/README.md"
+  install -Dm644 share/licenses/niri-side-note/LICENSE \
+    "$pkgdir/usr/share/licenses/niri-side-note/LICENSE"
+  install -Dm644 share/licenses/niri-side-note/NOTICE \
+    "$pkgdir/usr/share/licenses/niri-side-note/NOTICE"
+
+  if [[ -d share/licenses/niri-side-note/fonts ]]; then
+    install -d "$pkgdir/usr/share/licenses/niri-side-note/fonts"
+    install -m644 share/licenses/niri-side-note/fonts/* \
+      "$pkgdir/usr/share/licenses/niri-side-note/fonts/"
+  fi
+}

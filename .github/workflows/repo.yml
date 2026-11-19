@@ -1,0 +1,117 @@
+name: repo
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repo-publish
+  cancel-in-progress: false
+
+env:
+  REPO_NAME: rodriguez
+  RELEASE_TAG: rolling
+  DSH_REPO: Moritz230127/deepseek-harness-desktop-wayland
+  DSH_TAG: rolling
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare build environment
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git gnupg sudo github-cli meson ninja gtk4 wayland wayland-protocols
+          id builder >/dev/null 2>&1 || useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >/etc/sudoers.d/builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Import signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_KEY }}
+        run: |
+          install -d -m700 -o builder -g builder /home/builder/.gnupg
+          printf '%s' "$GPG_PRIVATE_KEY" | sudo -u builder gpg --batch --import
+          KEYID=$(sudo -u builder gpg --list-secret-keys --with-colons | awk -F: '/^sec:/{print $5; exit}')
+          test -n "$KEYID"
+          echo "KEYID=$KEYID" >> "$GITHUB_ENV"
+
+      - name: Fetch existing database
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p repo incoming
+          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --title "Rodriguez pacman repo" --notes "rolling"
+          gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
+            --pattern "$REPO_NAME.db*" --pattern "$REPO_NAME.files*" \
+            --dir repo --clobber || true
+          if [ -f "repo/$REPO_NAME.db" ]; then cp -f "repo/$REPO_NAME.db" "repo/$REPO_NAME.db.tar.gz"; fi
+          if [ -f "repo/$REPO_NAME.files" ]; then cp -f "repo/$REPO_NAME.files" "repo/$REPO_NAME.files.tar.gz"; fi
+          chown -R builder:builder repo incoming
+
+      - name: Build gtk4-layer-shell
+        run: |
+          ( cd pkgs/gtk4-layer-shell && sudo -u builder makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
+          cp pkgs/gtk4-layer-shell/*.pkg.tar.zst pkgs/gtk4-layer-shell/*.pkg.tar.zst.sig repo/
+
+      - name: Package Niri Side Note
+        run: |
+          ( cd pkgs/niri-side-note-bin && sudo -u builder makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
+          cp pkgs/niri-side-note-bin/*.pkg.tar.zst pkgs/niri-side-note-bin/*.pkg.tar.zst.sig repo/
+
+      - name: Mirror DSH release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release download "$DSH_TAG" -R "$DSH_REPO" --pattern latest --dir incoming --clobber
+          ARTIFACT=$(awk -F= '/^artifact=/{print $2}' incoming/latest)
+          test -n "$ARTIFACT"
+          if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets \
+               --jq '.assets[].name' | grep -qx "$ARTIFACT"; then
+            echo "already published: $ARTIFACT"
+            exit 0
+          fi
+          gh release download "$DSH_TAG" -R "$DSH_REPO" \
+            --pattern "$ARTIFACT" --pattern SHA256SUMS --dir incoming --clobber
+          EXPECTED=$(awk -v f="$ARTIFACT" '{ n=$2; sub(/^\*/, "", n); if (n==f) print $1 }' incoming/SHA256SUMS)
+          ACTUAL=$(sha256sum "incoming/$ARTIFACT" | awk '{print $1}')
+          test -n "$EXPECTED"
+          test "$EXPECTED" = "$ACTUAL"
+          sudo -u builder gpg --batch --yes --detach-sign --local-user "$KEYID" \
+            --output "incoming/$ARTIFACT.sig" "incoming/$ARTIFACT"
+          cp "incoming/$ARTIFACT" "incoming/$ARTIFACT.sig" repo/
+
+      - name: Update signed database
+        run: |
+          set -euo pipefail
+          sudo -u builder repo-add --sign --key "$KEYID" \
+            "repo/$REPO_NAME.db.tar.gz" repo/*.pkg.tar.zst
+          cd repo
+          rm -f "$REPO_NAME.db" "$REPO_NAME.files" "$REPO_NAME.db.sig" "$REPO_NAME.files.sig"
+          cp -f "$REPO_NAME.db.tar.gz" "$REPO_NAME.db"
+          cp -f "$REPO_NAME.files.tar.gz" "$REPO_NAME.files"
+          cp -f "$REPO_NAME.db.tar.gz.sig" "$REPO_NAME.db.sig"
+          cp -f "$REPO_NAME.files.tar.gz.sig" "$REPO_NAME.files.sig"
+          cp -f "$GITHUB_WORKSPACE/keys/packages.asc" "$GITHUB_WORKSPACE/repo/packages.asc"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
+            repo/*.pkg.tar.zst repo/*.pkg.tar.zst.sig \
+            "repo/$REPO_NAME.db" "repo/$REPO_NAME.db.sig" \
+            "repo/$REPO_NAME.db.tar.gz" "repo/$REPO_NAME.db.tar.gz.sig" \
+            "repo/$REPO_NAME.files" "repo/$REPO_NAME.files.sig" \
+            "repo/$REPO_NAME.files.tar.gz" "repo/$REPO_NAME.files.tar.gz.sig" \
+            "repo/packages.asc" \
+            --clobber
