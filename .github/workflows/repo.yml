@@ -107,10 +107,17 @@ jobs:
           cp "incoming/$ARTIFACT" "incoming/$ARTIFACT.sig" repo/
 
       - name: Update signed database
+        shell: bash
         run: |
           set -euo pipefail
-          sudo -u builder repo-add --sign --key "$KEYID" \
-            "repo/$REPO_NAME.db.tar.gz" repo/*.pkg.tar.zst
+          shopt -s nullglob
+          pkgs=(repo/*.pkg.tar.zst)
+          if (( ${#pkgs[@]} )); then
+            sudo -u builder repo-add --sign --key "$KEYID" \
+              "repo/$REPO_NAME.db.tar.gz" "${pkgs[@]}"
+          else
+            echo "no new packages; keeping existing database"
+          fi
           cd repo
           rm -f "$REPO_NAME.db" "$REPO_NAME.files" "$REPO_NAME.db.sig" "$REPO_NAME.files.sig"
           cp -f "$REPO_NAME.db.tar.gz" "$REPO_NAME.db"
@@ -120,14 +127,19 @@ jobs:
           cp -f "$GITHUB_WORKSPACE/keys/packages.asc" "$GITHUB_WORKSPACE/repo/packages.asc"
 
       - name: Publish
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
-            repo/*.pkg.tar.zst repo/*.pkg.tar.zst.sig \
-            "repo/$REPO_NAME.db" "repo/$REPO_NAME.db.sig" \
-            "repo/$REPO_NAME.db.tar.gz" "repo/$REPO_NAME.db.tar.gz.sig" \
-            "repo/$REPO_NAME.files" "repo/$REPO_NAME.files.sig" \
-            "repo/$REPO_NAME.files.tar.gz" "repo/$REPO_NAME.files.tar.gz.sig" \
-            "repo/packages.asc" \
-            --clobber
+          set -euo pipefail
+          shopt -s nullglob
+          files=(
+            "repo/$REPO_NAME.db" "repo/$REPO_NAME.db.sig"
+            "repo/$REPO_NAME.db.tar.gz" "repo/$REPO_NAME.db.tar.gz.sig"
+            "repo/$REPO_NAME.files" "repo/$REPO_NAME.files.sig"
+            "repo/$REPO_NAME.files.tar.gz" "repo/$REPO_NAME.files.tar.gz.sig"
+            "repo/packages.asc"
+          )
+          files+=(repo/*.pkg.tar.zst)
+          files+=(repo/*.pkg.tar.zst.sig)
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" "${files[@]}" --clobber
