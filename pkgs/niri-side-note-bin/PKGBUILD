@@ -3,7 +3,7 @@
 
 pkgname=niri-side-note-bin
 pkgver=0.10.3
-pkgrel=1
+pkgrel=2
 pkgdesc='Niri 侧笺——贴边便签笔记（预编译二进制）'
 arch=('x86_64')
 url='https://github.com/Moritz230127/niri-side-note'
@@ -13,8 +13,8 @@ depends=('cairo' 'dbus' 'fontconfig' 'gdk-pixbuf2' 'glib2' 'glibc' 'graphene'
 provides=('niri-side-note')
 conflicts=('stickies-cn')
 options=('!strip' '!debug')
-source=("niri-side-note-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver-niri.1/niri-side-note-$pkgver-linux-x86_64.tar.gz")
-sha256sums=('9b7451230afc4543281435f449e1281e81a256dc4fb81cde1d1094eb2defbda8')
+source=("niri-side-note-$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver-niri.2/niri-side-note-$pkgver-linux-x86_64.tar.gz")
+sha256sums=('ea457004d465a39643e347acd47304ee2c3d87fa6c0fe306c4062e93652bd03b')
 
 package() {
   cd "niri-side-note-$pkgver-linux-x86_64"
