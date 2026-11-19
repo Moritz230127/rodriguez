@@ -86,7 +86,15 @@ jobs:
           test -n "$asset"
           pkg="niri-side-note-bin-$ver-$rel-x86_64.pkg.tar.zst"
           assets=$(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          db_has=0
+          if tar -tzf "repo/$REPO_NAME.db" 2>/dev/null | grep -qx "niri-side-note-bin-$ver-$rel/"; then
+            db_has=1
+          fi
+          asset_has=0
           if printf '%s\n' "$assets" | grep -qx "$pkg"; then
+            asset_has=1
+          fi
+          if [ "$db_has" = 1 ] && [ "$asset_has" = 1 ]; then
             echo "NIRI_SKIP=1" >> "$GITHUB_ENV"
             echo "already published: $pkg"
             exit 0
