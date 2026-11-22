@@ -11,9 +11,10 @@ on:
   repository_dispatch:
     types: [dsh-published]
   schedule:
-    # 每小时兜底轮询。不要退回每日一次：GitHub 定时任务实测会晚 7-8 小时，
-    # 甚至整天不触发；每日一次意味着新版本最多要等 24 小时以上。
-    - cron: '7 * * * *'
+    # 15 分钟兜底轮询。不要退回每日一次：GitHub 定时任务实测会晚 7-8 小时，
+    # 甚至整天不触发。配置 RODRIGUEZ_DISPATCH_TOKEN 后由 dispatch 立即触发，
+    # 这个 cron 只是没有 PAT 时的兜底。
+    - cron: '*/15 * * * *'
 
 permissions:
   contents: write
