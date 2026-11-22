@@ -5,7 +5,7 @@
 # NIRI_ASSET / NIRI_URL / NIRI_SHA256；本地也可以显式传这些变量来构建。
 
 pkgname=niri-side-note-bin
-pkgver=${NIRI_PKGVER:-0.10.3}
+pkgver=${NIRI_PKGVER:-0.11.0}
 pkgrel=${NIRI_PKGREL:-1}
 pkgdesc='Niri 侧笺——贴边便签笔记（预编译二进制）'
 arch=('x86_64')
@@ -17,9 +17,9 @@ provides=('niri-side-note')
 conflicts=('stickies-cn')
 options=('!strip' '!debug')
 
-_asset=${NIRI_ASSET:-niri-side-note-0.10.3-linux-x86_64.tar.gz}
-_url=${NIRI_URL:-https://github.com/Moritz230127/niri-side-note/releases/download/v0.10.3-niri.1/$_asset}
-_sha256=${NIRI_SHA256:-9b7451230afc4543281435f449e1281e81a256dc4fb81cde1d1094eb2defbda8}
+_asset=${NIRI_ASSET:-niri-side-note-0.11.0-linux-x86_64.tar.gz}
+_url=${NIRI_URL:-https://github.com/Moritz230127/niri-side-note/releases/download/v0.11.0-niri.1/$_asset}
+_sha256=${NIRI_SHA256:-c8d65bb6824db38098146d0e34a63931e7e081faa21ebaa2941d40ccfeb4b322}
 
 source=("$_asset::$_url")
 sha256sums=("$_sha256")
