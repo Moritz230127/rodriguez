@@ -6,7 +6,7 @@
 
 pkgname=niri-side-note-bin
 pkgver=${NIRI_PKGVER:-0.11.0}
-pkgrel=${NIRI_PKGREL:-1}
+pkgrel=${NIRI_PKGREL:-2}
 pkgdesc='Niri 侧笺——贴边便签笔记（预编译二进制）'
 arch=('x86_64')
 url='https://github.com/Moritz230127/niri-side-note'
@@ -18,8 +18,8 @@ conflicts=('stickies-cn')
 options=('!strip' '!debug')
 
 _asset=${NIRI_ASSET:-niri-side-note-0.11.0-linux-x86_64.tar.gz}
-_url=${NIRI_URL:-https://github.com/Moritz230127/niri-side-note/releases/download/v0.11.0-niri.1/$_asset}
-_sha256=${NIRI_SHA256:-c8d65bb6824db38098146d0e34a63931e7e081faa21ebaa2941d40ccfeb4b322}
+_url=${NIRI_URL:-https://github.com/Moritz230127/niri-side-note/releases/download/v0.11.0-niri.2/$_asset}
+_sha256=${NIRI_SHA256:-f36c2958eadbdb2065c78880e3cf7430f7db02559e0dd3098688e48b1eeb5bd6}
 
 source=("$_asset::$_url")
 sha256sums=("$_sha256")
