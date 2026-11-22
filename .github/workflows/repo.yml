@@ -2,11 +2,22 @@ name: repo
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: '没有新包也强制重建数据库并发布'
+        type: boolean
+        default: false
+  # dsh 构建仓发布成功后主动通知，立即镜像，不再等每日轮询。
+  repository_dispatch:
+    types: [dsh-published]
   schedule:
-    - cron: '17 3 * * *'
+    # 每小时兜底轮询。不要退回每日一次：GitHub 定时任务实测会晚 7-8 小时，
+    # 甚至整天不触发；每日一次意味着新版本最多要等 24 小时以上。
+    - cron: '7 * * * *'
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: repo-publish
@@ -17,11 +28,13 @@ env:
   RELEASE_TAG: rolling
   DSH_REPO: Moritz230127/deepseek-harness-desktop-wayland
   DSH_TAG: rolling
+  DSH_PKGNAME: deepseek-harness-desktop-wayland
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +65,7 @@ jobs:
             gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --title "Rodriguez pacman repo" --notes "rolling"
           gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
             --pattern "$REPO_NAME.db*" --pattern "$REPO_NAME.files*" \
+            --pattern dsh-mirror.env \
             --dir repo --clobber || true
           if [ -f "repo/$REPO_NAME.db" ]; then cp -f "repo/$REPO_NAME.db" "repo/$REPO_NAME.db.tar.gz"; fi
           if [ -f "repo/$REPO_NAME.files" ]; then cp -f "repo/$REPO_NAME.files" "repo/$REPO_NAME.files.tar.gz"; fi
@@ -68,6 +82,7 @@ jobs:
           else
             ( cd pkgs/gtk4-layer-shell && sudo -u builder makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
             cp pkgs/gtk4-layer-shell/*.pkg.tar.zst pkgs/gtk4-layer-shell/*.pkg.tar.zst.sig repo/
+            echo "CHANGED=1" >> "$GITHUB_ENV"
           fi
 
       - name: Resolve latest Niri release
@@ -123,29 +138,68 @@ jobs:
               SRCDEST="$GITHUB_WORKSPACE/incoming" \
               makepkg -sf --nodeps --noconfirm --sign --key "$KEYID" )
           cp pkgs/niri-side-note-bin/*.pkg.tar.zst pkgs/niri-side-note-bin/*.pkg.tar.zst.sig repo/
+          echo "CHANGED=1" >> "$GITHUB_ENV"
+
+      # 只下载 latest（185 B）与 SHA256SUMS（几百 B）做判断；
+      # 用 release 资产的 sha256 digest 与上游校验和比较，内容没变就不拉 359 MB 的包。
+      - name: Resolve DSH release
+        id: dsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_ARTIFACT: ${{ github.event.client_payload.artifact }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming
+          gh release download "$DSH_TAG" -R "$DSH_REPO" \
+            --pattern latest --pattern SHA256SUMS --dir incoming --clobber
+          artifact=$(awk -F= '/^artifact=/{print $2}' incoming/latest)
+          test -n "$artifact"
+          expected=$(awk -v f="$artifact" '{ n=$2; sub(/^\*/, "", n); if (n==f) print $1 }' incoming/SHA256SUMS)
+          test -n "$expected"
+          if [ -n "${EVENT_ARTIFACT:-}" ] && [ "$EVENT_ARTIFACT" != "$artifact" ]; then
+            echo "::warning::事件 artifact ($EVENT_ARTIFACT) 与当前 latest ($artifact) 不同，以 latest 为准"
+          fi
+          current=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq ".assets[] | select(.name == \"$artifact\") | .digest // empty" \
+            2>/dev/null || true)
+          if [ "$current" = "sha256:$expected" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "DSH 已是最新内容：$artifact"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "DSH_ARTIFACT=$artifact"
+            echo "DSH_SHA256=$expected"
+            echo "DSH_PKGVER=$(awk -F= '/^pkgver=/{print $2}' incoming/latest)"
+            echo "DSH_PKGREL=$(awk -F= '/^pkgrel=/{print $2}' incoming/latest)"
+            echo "DSH_UPSTREAM_SHA=$(awk -F= '/^upstream_sha=/{print $2}' incoming/latest)"
+          } >> "$GITHUB_ENV"
+          echo "待镜像：$artifact ($expected)"
 
       - name: Mirror DSH release
+        if: steps.dsh.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release download "$DSH_TAG" -R "$DSH_REPO" --pattern latest --dir incoming --clobber
-          ARTIFACT=$(awk -F= '/^artifact=/{print $2}' incoming/latest)
-          test -n "$ARTIFACT"
-          if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets \
-               --jq '.assets[].name' | grep -qx "$ARTIFACT"; then
-            echo "already published: $ARTIFACT"
-            exit 0
-          fi
           gh release download "$DSH_TAG" -R "$DSH_REPO" \
-            --pattern "$ARTIFACT" --pattern SHA256SUMS --dir incoming --clobber
-          EXPECTED=$(awk -v f="$ARTIFACT" '{ n=$2; sub(/^\*/, "", n); if (n==f) print $1 }' incoming/SHA256SUMS)
-          ACTUAL=$(sha256sum "incoming/$ARTIFACT" | awk '{print $1}')
-          test -n "$EXPECTED"
-          test "$EXPECTED" = "$ACTUAL"
+            --pattern "$DSH_ARTIFACT" --dir incoming --clobber
+          actual=$(sha256sum "incoming/$DSH_ARTIFACT" | awk '{print $1}')
+          test "$actual" = "$DSH_SHA256"
           sudo -u builder gpg --batch --yes --detach-sign --local-user "$KEYID" \
-            --output "incoming/$ARTIFACT.sig" "incoming/$ARTIFACT"
-          cp "incoming/$ARTIFACT" "incoming/$ARTIFACT.sig" repo/
+            --output "incoming/$DSH_ARTIFACT.sig" "incoming/$DSH_ARTIFACT"
+          cp "incoming/$DSH_ARTIFACT" "incoming/$DSH_ARTIFACT.sig" repo/
+          {
+            echo "upstream_sha=$DSH_UPSTREAM_SHA"
+            echo "pkgver=$DSH_PKGVER"
+            echo "pkgrel=$DSH_PKGREL"
+            echo "artifact=$DSH_ARTIFACT"
+            echo "artifact_sha256=$DSH_SHA256"
+            echo "mirrored_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > repo/dsh-mirror.env
+          echo "CHANGED=1" >> "$GITHUB_ENV"
+          echo "已镜像：$DSH_ARTIFACT"
 
       - name: Update signed database
         shell: bash
@@ -156,31 +210,109 @@ jobs:
           if (( ${#pkgs[@]} )); then
             sudo -u builder repo-add --sign --key "$KEYID" \
               "repo/$REPO_NAME.db.tar.gz" "${pkgs[@]}"
+            echo "CHANGED=1" >> "$GITHUB_ENV"
           else
             echo "no new packages; keeping existing database"
           fi
           cd repo
-          rm -f "$REPO_NAME.db" "$REPO_NAME.files" "$REPO_NAME.db.sig" "$REPO_NAME.files.sig"
-          cp -f "$REPO_NAME.db.tar.gz" "$REPO_NAME.db"
-          cp -f "$REPO_NAME.files.tar.gz" "$REPO_NAME.files"
-          cp -f "$REPO_NAME.db.tar.gz.sig" "$REPO_NAME.db.sig"
-          cp -f "$REPO_NAME.files.tar.gz.sig" "$REPO_NAME.files.sig"
+          if [ -f "$REPO_NAME.db.tar.gz" ]; then
+            rm -f "$REPO_NAME.db" "$REPO_NAME.files" "$REPO_NAME.db.sig" "$REPO_NAME.files.sig"
+            cp -f "$REPO_NAME.db.tar.gz" "$REPO_NAME.db"
+            cp -f "$REPO_NAME.files.tar.gz" "$REPO_NAME.files"
+            cp -f "$REPO_NAME.db.tar.gz.sig" "$REPO_NAME.db.sig"
+            cp -f "$REPO_NAME.files.tar.gz.sig" "$REPO_NAME.files.sig"
+          fi
           cp -f "$GITHUB_WORKSPACE/keys/packages.asc" "$GITHUB_WORKSPACE/repo/packages.asc"
+
+          # 发布前确认新镜像的 DSH 版本真的进了数据库，防止 repo-add 静默失败。
+          if [ -n "${DSH_PKGVER:-}" ]; then
+            entry="$DSH_PKGNAME-$DSH_PKGVER-$DSH_PKGREL"
+            got=$(tar -xOf "$REPO_NAME.db" "$entry/desc" 2>/dev/null | awk '/^%VERSION%$/{getline; print; exit}')
+            want="$DSH_PKGVER-$DSH_PKGREL"
+            if [ "$got" != "$want" ]; then
+              echo "数据库里没有刚镜像的版本：want=$want got=${got:-<missing>}" >&2
+              exit 1
+            fi
+          fi
 
       - name: Publish
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ inputs.force || 'false' }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(
+          if [ "${CHANGED:-0}" != 1 ] && [ "$FORCE" != "true" ]; then
+            echo "没有新包，跳过发布（避免每次重传数据库、制造“已更新”假象）"
+            exit 0
+          fi
+
+          # 先传包，再传数据库：pacman 同步到新 db 时，包资产必须已经存在。
+          pkgfiles=(repo/*.pkg.tar.zst repo/*.pkg.tar.zst.sig)
+          if (( ${#pkgfiles[@]} )); then
+            echo "==> 先上传 ${#pkgfiles[@]} 个包资产"
+            gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" "${pkgfiles[@]}" --clobber
+          fi
+
+          meta=(
             "repo/$REPO_NAME.db" "repo/$REPO_NAME.db.sig"
             "repo/$REPO_NAME.db.tar.gz" "repo/$REPO_NAME.db.tar.gz.sig"
             "repo/$REPO_NAME.files" "repo/$REPO_NAME.files.sig"
             "repo/$REPO_NAME.files.tar.gz" "repo/$REPO_NAME.files.tar.gz.sig"
             "repo/packages.asc"
           )
-          files+=(repo/*.pkg.tar.zst)
-          files+=(repo/*.pkg.tar.zst.sig)
-          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" "${files[@]}" --clobber
+          if [ -f repo/dsh-mirror.env ]; then meta+=(repo/dsh-mirror.env); fi
+          echo "==> 再上传数据库与状态"
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" "${meta[@]}" --clobber
+
+      - name: Summary
+        if: always()
+        run: |
+          dsh="${DSH_PKGVER:-—}"
+          if [ -n "${DSH_PKGREL:-}" ]; then dsh="$dsh-$DSH_PKGREL"; fi
+          {
+            echo "### Rodriguez"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 触发 | \`${{ github.event_name }}\` |"
+            echo "| DSH 目标 | \`$dsh\` |"
+            echo "| 是否有变更 | \`${CHANGED:-0}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    needs: publish
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Open or update mirror-failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh label create mirror-failure --color B60205 \
+            --description "Rodriguez 镜像或发布失败" --force >/dev/null 2>&1 || true
+          body=$(mktemp)
+          trap 'rm -f "$body"' EXIT
+          {
+            echo "自动镜像/发布失败。"
+            echo
+            echo "- run: $RUN_URL"
+            echo "- 触发: \`${{ github.event_name }}\`"
+            echo "- commit: \`${{ github.sha }}\`"
+            echo
+            echo "常见原因：359 MB 资产下载超时、签名密钥不可用、数据库版本校验失败。"
+            echo "修复后手动跑一次 \`repo\` 工作流即可。"
+          } > "$body"
+          issue=$(gh issue list -R "$GITHUB_REPOSITORY" --state open \
+            --label mirror-failure --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" -R "$GITHUB_REPOSITORY" --body-file "$body"
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" \
+              --title "Rodriguez 镜像失败：run ${{ github.run_id }}" \
+              --label mirror-failure --body-file "$body"
+          fi
