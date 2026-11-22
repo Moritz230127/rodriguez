@@ -68,7 +68,7 @@ dsh-wayland-doctor
 - **gtk4-layer-shell**：上游低频依赖，固定在 1.3.0；升级时手动改 PKGBUILD 和 `pkgrel`。
 - **数据库增量更新**：只下载旧 `rodriguez.db`，`repo-add` 新包后上传，不重新下载历史包。
 - **不覆盖同版本资产**：同一 `pkgver-pkgrel` 一旦发布就不再覆盖；需要重建时先 bump `pkgrel`。
-- Release 只保留最近 3 个版本化包；数据库只引用当前版本，删旧资产不影响升级。
+- 数据库只引用当前版本；旧包资产目前手动清理，删旧资产不影响升级。
 
 ## 签名与信任
 
@@ -91,7 +91,7 @@ dsh-wayland-doctor
 | `pacman -Sy` 404 / 签名失败 | 公钥是否 `--add` + `--lsign-key`；`SigLevel` 是否为 `Required DatabaseOptional` |
 | `checkupdates` 没有 DSH 新版本 | [构建仓 Actions](https://github.com/Moritz230127/deepseek-harness-desktop-wayland/actions)、本仓 Actions、`ci-failure` / `mirror-failure` issue |
 | DSH 启动失败 / 显示异常 | `dsh-wayland-doctor`；`journalctl --user -u niri`；附 `pacman -Q deepseek-harness-desktop-wayland` |
-| 升级后回滚 | `sudo pacman -U <旧版本 .pkg.tar.zst URL>`；Release 保留最近 3 个版本 |
+| 升级后回滚 | `sudo pacman -U <旧版本 .pkg.tar.zst URL>`；旧版本资产可能已被手动清理 |
 
 ## 目录结构
 
