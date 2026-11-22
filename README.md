@@ -65,6 +65,7 @@ Release 资产是扁平的：`rodriguez.db`、`rodriguez.files`、`*.pkg.tar.zst
 - Niri 侧笺：应用仓库发新 tag/Release，并上传 `niri-side-note-<version>-linux-x86_64.tar.gz`；workflow 会自动解析最新 Release 的 tag、资产名和 SHA-256，生成包并签名，不需要修改 PKGBUILD。已存在的同版本包会跳过。
 - gtk4-layer-shell：上游低频依赖，固定在 1.3.0；升级时手动 bump PKGBUILD 和 `pkgrel`。
 - DSH：上游 CI 继续追 DSH 官方 commit/tag 并打补丁；本仓库只镜像它已发布的包，校验 `SHA256SUMS` 后用本仓库密钥重新签名，不在 VPS 或本仓库重编。
+- DSH 镜像触发：dsh 构建仓发布后 `repository_dispatch` 立即触发；没有 PAT 时 15 分钟 cron 兜底；`main` 的 push 也会触发一次检查（紧急镜像/验证用）。
 - 数据库增量更新：workflow 只下载旧 `rodriguez.db`，`repo-add` 新包后上传，不会重新下载全部历史包。
 - 同一 `pkgver-pkgrel` 的资产一旦发布就不再覆盖；需要重建时先 bump `pkgrel`，否则 workflow 会跳过已存在的资产。
 

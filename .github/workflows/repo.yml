@@ -1,6 +1,9 @@
 name: repo
 
 on:
+  # push 到 main 时也跑一次检查：用于紧急镜像/验证新链路；日常由 dispatch + 15 分钟兜底。
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       force:
